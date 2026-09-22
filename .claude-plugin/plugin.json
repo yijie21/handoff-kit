@@ -1,0 +1,6 @@
+{
+  "name": "handoff-kit",
+  "version": "0.1.0",
+  "description": "Make /clear free: /handoff writes a two-layer handoff (append-only DECISIONS.md + disposable STATE.md), and a SessionStart hook auto-injects it into the next session.",
+  "keywords": ["context", "handoff", "memory", "clear", "hooks"]
+}

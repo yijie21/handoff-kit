@@ -1,0 +1,14 @@
+{
+  "name": "handoff-kit",
+  "metadata": {
+    "description": "Context handoff tooling for Claude Code",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "handoff-kit",
+      "source": "./",
+      "description": "Two-layer context handoff: /handoff writes it, a SessionStart hook reads it back automatically."
+    }
+  ]
+}

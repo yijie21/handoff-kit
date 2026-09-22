@@ -1,0 +1,17 @@
+{
+  "description": "Inject the project's STATE.md (full) and DECISIONS.md (headings only) into a fresh session, so /clear costs no continuity.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/inject_handoff.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
