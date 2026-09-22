@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """SessionStart hook: inject the project's handoff notes into a fresh session.
 
-Injects STATE.md in full (it is capped by the /handoff command) and only the
-headings of DECISIONS.md plus its path, so an append-only decision log that
-grows for months never re-inflates the context we just paid to clear.
+Injects STATE.md in full (it is capped by the /handoff command), the *open*
+subtrees of TODO.md (done/dropped items and their children are filtered out),
+and only the headings of DECISIONS.md plus its path, so an append-only decision
+log that grows for months never re-inflates the context we just paid to clear.
 
 Silent no-op when the project has no STATE.md.
 """
@@ -15,10 +16,12 @@ import time
 from pathlib import Path
 
 STATE = "STATE.md"
+TODO = "TODO.md"
 DECISIONS = "DECISIONS.md"
 
 MAX_WALK_UP = 5
 STATE_BYTE_CAP = 32_000  # safety valve; /handoff enforces the real 150-line limit
+TODO_BYTE_CAP = 16_000
 STALE_AFTER_SECONDS = 6 * 3600
 SOURCE_SUFFIXES = {
     ".py", ".sh", ".c", ".cc", ".cpp", ".h", ".hpp", ".cu", ".rs", ".go",
@@ -76,6 +79,63 @@ def decision_headings(path: Path) -> list[str]:
     return [ln.rstrip() for ln in lines if ln.startswith("#")]
 
 
+_DONE_MARKS = ("[x]", "[X]", "[-]")
+_OPEN_MARKS = ("[ ]", "[~]")
+
+
+def _item_mark(line: str) -> str | None:
+    """Return the checkbox mark of a list item line, or None if not an item."""
+    body = line.lstrip()
+    if not body.startswith(("- ", "* ")):
+        return None
+    body = body[2:]
+    for m in _DONE_MARKS + _OPEN_MARKS:
+        if body.startswith(m):
+            return m
+    return None
+
+
+def open_todo_view(path: Path) -> tuple[str, int, int]:
+    """TODO.md with done/dropped subtrees removed. Returns (text, n_open, n_done).
+
+    A done item hides every following line indented deeper than it, so a
+    finished parent takes its finished children with it; an open parent keeps
+    its open children and drops only the finished ones.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return "", 0, 0
+    kept: list[str] = []
+    n_open = n_done = 0
+    hide_indent: int | None = None
+    for ln in lines:
+        indent = len(ln) - len(ln.lstrip(" "))
+        mark = _item_mark(ln)
+        if hide_indent is not None:
+            if ln.strip() and indent > hide_indent:
+                if mark in _DONE_MARKS:
+                    n_done += 1
+                elif mark in _OPEN_MARKS:
+                    n_open += 1  # counted, but hidden under a done parent (data error)
+                continue
+            hide_indent = None
+        if mark in _DONE_MARKS:
+            n_done += 1
+            hide_indent = indent
+            continue
+        if mark in _OPEN_MARKS:
+            n_open += 1
+        kept.append(ln.rstrip())
+    # collapse runs of blank lines left behind by removed subtrees
+    out: list[str] = []
+    for ln in kept:
+        if ln == "" and out and out[-1] == "":
+            continue
+        out.append(ln)
+    return "\n".join(out).strip(), n_open, n_done
+
+
 def build_context(root: Path) -> str:
     state_path = root / STATE
     try:
@@ -104,6 +164,17 @@ def build_context(root: Path) -> str:
     parts += [f"## {STATE}（完整）", "", state.rstrip()]
     if truncated:
         parts += ["", f"_[已截断，完整内容见 {state_path}]_"]
+
+    todo_path = root / TODO
+    if todo_path.is_file():
+        view, n_open, n_done = open_todo_view(todo_path)
+        if len(view.encode("utf-8")) > TODO_BYTE_CAP:
+            view = view.encode("utf-8")[:TODO_BYTE_CAP].decode("utf-8", errors="ignore") + "\n_[已截断]_"
+        parts += ["", f"## {TODO}（仅未完成项：{n_open} 项未完成，{n_done} 项已完成/放弃，已隐藏）", "",
+                  view or "_（没有未完成项）_", "",
+                  f"这是任务的唯一真源，路径 `{todo_path}`。**在聊天里列出任何 todo 之前，先把它写进这个文件**"
+                  "（新子任务缩进到父项下，做完打 `[x]` 加日期，放弃打 `[-]` 写原因，不删行）；"
+                  "聊天里只展示文件的当前视图，不要另起一份清单。随时可用 `/todo` 对账。"]
 
     dec_path = root / DECISIONS
     if dec_path.is_file():
