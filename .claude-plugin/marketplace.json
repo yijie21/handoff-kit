@@ -1,5 +1,9 @@
 {
   "name": "handoff-kit",
+  "owner": {
+    "name": "yijie21",
+    "url": "https://github.com/yijie21"
+  },
   "metadata": {
     "description": "Context handoff tooling for Claude Code",
     "version": "0.1.0"
